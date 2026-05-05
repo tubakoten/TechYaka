@@ -21,12 +21,7 @@ https://youtu.be/h3Q3QGBW3F8?si=McktJ5vpTImVV6z8
 *Aşağıdaki görseller uygulamanın güncel arayüzünü temsil etmektedir.*
 
 | Ana Ekran ve Harita |
-|<img width="332" height="718" alt="Ekran Resmi 2026-05-06 00 13 38" src="https://github.com/user-attachments/assets/67748c72-c16d-42bd-ae0c-78d774bbb80a" />|<img width="332" height="718" alt="Ekran Resmi 2026-05-06 00 13 52" src="https://github.com/user-attachments/assets/9972a4fd-2af3-4eb2-adae-39bb4f0df100" />|
-| *Lokasyon bazlı keşif ve yatay kaydırmalı kartlar.* |
-
-| Başvuru Takibi (Tracking) | Profil ve Tema Ayarları |
-|<img width="332" height="718" alt="Ekran Resmi 2026-05-06 00 14 01" src="https://github.com/user-attachments/assets/de692318-a07c-4524-bc6c-4d1bf4d68d16" />|<img width="332" height="718" alt="Ekran Resmi 2026-05-06 00 14 08" src="https://github.com/user-attachments/assets/f0603e4a-5ca4-4b16-ae7c-886f4c5b11e1" />|
-| *Gerçek zamanlı başvuru durumu güncellemeleri.* | *Kişiselleştirilmiş ayarlar ve tema geçişi.* |
+|<img width="332" height="718" alt="Ekran Resmi 2026-05-06 00 13 38" src="https://github.com/user-attachments/assets/67748c72-c16d-42bd-ae0c-78d774bbb80a" /><img width="332" height="718" alt="Ekran Resmi 2026-05-06 00 13 52" src="https://github.com/user-attachments/assets/9972a4fd-2af3-4eb2-adae-39bb4f0df100" />|
 
 ---
 
