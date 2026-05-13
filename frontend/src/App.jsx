@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
-import { mockEvents } from './mockData';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-
 import L from 'leaflet';
 
 // Yeni Palete Uygun Mint Leaf Pin (Gündüz Modu İçin)
@@ -30,19 +28,40 @@ function App() {
   const [activeTab, setActiveTab] = useState('home'); 
   const [activeEvent, setActiveEvent] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // YENİ: Dark Mode State'i
   const [isDarkMode, setIsDarkMode] = useState(false);
-
   const [homeFilter, setHomeFilter] = useState('all'); 
   const [savedEventIds, setSavedEventIds] = useState([1]); 
+
+  // BACKEND'DEN GELECEK GERÇEK VERİLER İÇİN STATE
+  const [backendEvents, setBackendEvents] = useState([]);
 
   const [appliedEvents, setAppliedEvents] = useState([
     { id: 101, eventId: null, company: "Commencis", title: "Future Commencer Yaz Stajı", date: "24 Mayıs 2026", status: "Bekliyor", type: "pending" },
     { id: 102, eventId: null, company: "Nestlé", title: "Talent Nest Summer Internship 2026", date: "18 Mayıs 2026", status: "Olumlu", type: "success" }
   ]);
 
-  // Dark Mode tetiklendiğinde ana HTML etiketine class ekle
+  // YENİ: FASTAPI BACKEND'DEN VERİ ÇEKME İŞLEMİ
+  useEffect(() => {
+    fetch('http://127.0.0.1:8000/api/etkinlikler')
+      .then(response => response.json())
+      .then(data => {
+        // Backend'deki alan adlarını senin UI'ın beklediği isimlere uyarlıyoruz
+        const formattedData = data.map(dbEvent => ({
+          id: dbEvent.id,
+          title: dbEvent.title,
+          location_text: dbEvent.location, // UI'daki adı
+          coordinates: dbEvent.coordinates,
+          category: dbEvent.type, // UI'daki adı
+          date_start: dbEvent.date, // UI'daki adı
+          deadline: "Yakında", // Backend'de henüz yoksa varsayılan
+          level: "Genel", // Backend'de henüz yoksa varsayılan
+          url: "#"
+        }));
+        setBackendEvents(formattedData);
+      })
+      .catch(error => console.error("API Bağlantı Hatası:", error));
+  }, []);
+
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -140,9 +159,10 @@ function App() {
     );
   }
 
+  // mockEvents YERİNE backendEvents KULLANIYORUZ
   const displayedHomeEvents = homeFilter === 'all' 
-    ? mockEvents 
-    : mockEvents.filter(e => e.category === homeFilter);
+    ? backendEvents 
+    : backendEvents.filter(e => e.category === homeFilter);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -151,7 +171,7 @@ function App() {
           <div className="h-full overflow-y-auto pb-32 bg-[#f4f6f8] dark:bg-[#1C1018] px-6 pt-12 animate-fade-in transition-colors duration-500">
             <div className="mb-8">
               <h1 className="text-3xl font-black text-gray-900 dark:text-white leading-tight">Merhaba Deniz 👋</h1>
-              <p className="text-gray-500 dark:text-gray-400 font-medium mt-1">İstanbul'da senin için {mockEvents.length} yeni fırsat var.</p>
+              <p className="text-gray-500 dark:text-gray-400 font-medium mt-1">İstanbul'da senin için {backendEvents.length} yeni fırsat var.</p>
             </div>
             
             <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide mb-4">
@@ -168,7 +188,7 @@ function App() {
 
             <div className="space-y-4">
               {displayedHomeEvents.length === 0 ? (
-                <div className="text-center py-10 text-gray-400 font-medium">Bu kategoride henüz etkinlik yok.</div>
+                <div className="text-center py-10 text-gray-400 font-medium">Bu kategoride henüz etkinlik yok (Veya yükleniyor).</div>
               ) : (
                 displayedHomeEvents.map(event => {
                   const isSaved = savedEventIds.includes(event.id);
@@ -196,7 +216,7 @@ function App() {
         );
 
       case 'saved':
-        const savedEventsList = mockEvents.filter(e => savedEventIds.includes(e.id));
+        const savedEventsList = backendEvents.filter(e => savedEventIds.includes(e.id));
         return (
           <div className="h-full overflow-y-auto pb-32 bg-[#f4f6f8] dark:bg-[#1C1018] px-6 pt-12 animate-fade-in transition-colors duration-500">
             <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-6">Kayıtlı</h1>
@@ -336,7 +356,7 @@ function App() {
               </div>
             </div>
             
-            {/* HARİTA: Tema durumuna göre katmanı ve ikonu değiştirir */}
+            {/* HARİTA */}
             <div className="absolute inset-0 z-0 bg-[#e4e0d7] dark:bg-[#1a1a1a]">
               <MapContainer center={[41.04, 29.0]} zoom={11} className="w-full h-full zoom-control-bottom-right">
                 <TileLayer 
@@ -346,11 +366,11 @@ function App() {
                   } 
                   attribution='&copy; OpenStreetMap' 
                 />
-                {mockEvents.map(event => (
+                {backendEvents.map(event => (
                   <Marker 
                     key={event.id} 
                     position={event.coordinates} 
-                    icon={isDarkMode ? AzureIcon : MintIcon} // Tema ikonunu belirle
+                    icon={isDarkMode ? AzureIcon : MintIcon}
                     eventHandlers={{ click: () => handleMarkerClick(event) }} 
                   />
                 ))}
@@ -359,7 +379,7 @@ function App() {
             
             <div className="absolute bottom-20 w-full z-[1000] overflow-x-auto pb-4 px-4 scrollbar-hide">
               <div className="flex gap-4 w-max snap-x">
-                {mockEvents.map(event => (
+                {backendEvents.map(event => (
                   <div key={event.id} id={`event-card-${event.id}`} onClick={() => handleOpenModal(event)} className={`snap-center shrink-0 w-[280px] bg-white/95 dark:bg-gray-800/95 backdrop-blur-xl p-5 rounded-3xl cursor-pointer shadow-xl transition-all duration-300 border ${activeEvent?.id === event.id ? 'border-[#094D92] dark:border-[#68B684] scale-105' : 'border-gray-100 dark:border-gray-700'}`}>
                     <div className="flex justify-between items-center mb-3">
                       <span className="text-[10px] font-black uppercase px-3 py-1 bg-[#68B684]/10 text-[#68B684] rounded-full">{event.category}</span>
