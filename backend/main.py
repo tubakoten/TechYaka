@@ -4,14 +4,30 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
+from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.background import BackgroundScheduler
 
-# Veritabanı için gerekli araçlar
+from scraper import fetch_raw_text_from_url
+
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, JSON
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
 
 # ---------------------------------------------------------
-# 1. VERİTABANI KURULUMU (SQLite)
+# 1. GÜVENLİK VE YAPAY ZEKA AYARLARI
+# ---------------------------------------------------------
+load_dotenv()
+
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    print("🚨 UYARI: GEMINI_API_KEY .env dosyasında bulunamadı!")
+
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel('gemini-2.5-flash')
+
+# ---------------------------------------------------------
+# 2. VERİTABANI KURULUMU
 # ---------------------------------------------------------
 SQLALCHEMY_DATABASE_URL = "sqlite:///./techyaka.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
@@ -23,10 +39,12 @@ class EtkinlikDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
     location = Column(String)
-    coordinates = Column(JSON) 
+    coordinates = Column(JSON)
     type = Column(String)
     date = Column(String)
     is_active = Column(Boolean, default=True)
+    trust_score = Column(Integer, default=0)
+    source_url = Column(String, nullable=True)
 
 Base.metadata.create_all(bind=engine)
 
@@ -38,9 +56,93 @@ def get_db():
         db.close()
 
 # ---------------------------------------------------------
-# 2. FASTAPI VE YAPAY ZEKA KURULUMU
+# 3. TARANACAK SİTELER
 # ---------------------------------------------------------
-app = FastAPI(title="TechYaka API", version="2.0.1 (Hardcoded API Key)")
+KAYNAK_SITELER = [
+    {"url": "https://kommunity.com/events", "type": "Meetup"},
+    {"url": "https://www.eventbrite.com/d/turkey--istanbul/tech/", "type": "Etkinlik"},
+    {"url": "https://www.youthall.com/tr/internships/", "type": "Staj"},
+]
+
+# ---------------------------------------------------------
+# 4. SCHEDULER FONKSİYONU
+# ---------------------------------------------------------
+def otomatik_tara():
+    print("🤖 Scheduler başladı — siteler taranıyor...")
+    db = SessionLocal()
+    try:
+        for kaynak in KAYNAK_SITELER:
+            print(f"🔍 Taraniyor: {kaynak['url']}")
+            ham_metin = fetch_raw_text_from_url(kaynak["url"])
+
+            if not ham_metin:
+                print(f"⚠️ Veri çekilemedi: {kaynak['url']}")
+                continue
+
+            prompt = prompt = f"""
+Aşağıdaki metni oku ve bir teknoloji etkinliği objesi oluştur.
+ÖNEMLİ KURAL: SADECE JSON formatında çıktı ver. Kod bloğu (```json) kullanma, fazladan tek bir harf bile yazma.
+
+KOORDİNAT KURALI: Etkinliğin gerçek lokasyonuna göre İstanbul koordinatı ver.
+Örnek koordinatlar:
+- Kadıköy: [40.9927, 29.0277]
+- Beşiktaş: [41.0422, 29.0083]
+- Şişli: [41.0602, 28.9870]
+- Beyoğlu: [41.0335, 28.9779]
+- Üsküdar: [41.0231, 29.0152]
+- Ataşehir: [40.9923, 29.1244]
+- Maslak: [41.1082, 29.0195]
+- Topkapı: [41.0133, 28.9219]
+- Genel İstanbul: [41.0082, 28.9784]
+
+Format: {{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "Staj/Hackathon/Meetup/Etkinlik", "date": "GG Ay YYYY"}}
+Metin: {ham_metin[:3000]}
+"""
+            try:
+                response = model.generate_content(prompt)
+                ai_text = response.text.replace("```json", "").replace("```", "").strip()
+                etkinlik_data = json.loads(ai_text)
+
+                # Aynı URL'den mükerrer kayıt engelle
+                mevcut = db.query(EtkinlikDB).filter(EtkinlikDB.source_url == kaynak["url"]).first()
+                if mevcut:
+                    print(f"⏭️ Zaten var, atlandı: {kaynak['url']}")
+                    continue
+
+                yeni = EtkinlikDB(
+                    title=etkinlik_data.get("title", "Bilinmeyen Başlık"),
+                    location=etkinlik_data.get("location", "İstanbul"),
+                    coordinates=etkinlik_data.get("coordinates", [41.0825, 29.0131]),
+                    type=kaynak["type"],
+                    date=etkinlik_data.get("date", "Belirtilmemiş"),
+                    is_active=True,
+                    trust_score=0,
+                    source_url=kaynak["url"]
+                )
+                db.add(yeni)
+                db.commit()
+                print(f"✅ Kaydedildi: {yeni.title}")
+
+            except Exception as e:
+                print(f"❌ Hata ({kaynak['url']}): {str(e)}")
+                continue
+    finally:
+        db.close()
+
+# ---------------------------------------------------------
+# 5. FASTAPI BAŞLANGIÇ / KAPATMA
+# ---------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(otomatik_tara, 'cron', hour=2, minute=0)
+    scheduler.start()
+    print("✅ Scheduler başlatıldı — her gece 02:00'de çalışacak.")
+    yield
+    scheduler.shutdown()
+    print("🛑 Scheduler durduruldu.")
+
+app = FastAPI(title="TechYaka API", version="5.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,69 +151,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🚨 DİKKAT: Anahtarı test için doğrudan buraya yazdık!
-genai.configure(api_key="AIzaSyDaY5VVgDMOZM6YKTOzHrcsCqh_TKy-8wY")
-model = genai.GenerativeModel('gemini-2.5-flash')
-
+# ---------------------------------------------------------
+# 6. PYDANTIC ŞEMALARI
+# ---------------------------------------------------------
 class EtkinlikResponse(BaseModel):
     id: int
     title: str
-    location: str
+    location: str | None = None
     coordinates: list[float]
     type: str
-    date: str
+    date: str | None = None
     is_active: bool
+    trust_score: int
+    source_url: str | None = None
     model_config = {"from_attributes": True}
 
-# ---------------------------------------------------------
-# 3. API ENDPOINT'LERİ (Otonom Sistem)
-# ---------------------------------------------------------
+class URLRequest(BaseModel):
+    url: str
 
+# ---------------------------------------------------------
+# 7. ENDPOINT'LER
+# ---------------------------------------------------------
 @app.get("/api/etkinlikler", response_model=list[EtkinlikResponse])
 def listele_etkinlikler(db: Session = Depends(get_db)):
-    """Veritabanındaki tüm etkinlikleri çeker (React Frontend buraya bağlanıyor)."""
     return db.query(EtkinlikDB).all()
 
-@app.get("/api/etkinlik-uret")
-def uret_ve_kaydet(db: Session = Depends(get_db)):
-    """Gemini AI ile ham metinden veri üretir ve OTOMATİK olarak veritabanına kaydeder."""
+@app.post("/api/otomatik-etkinlik-ekle")
+def otomatik_etkinlik_ekle(request: URLRequest, db: Session = Depends(get_db)):
+    ham_metin = fetch_raw_text_from_url(request.url)
+
+    if not ham_metin:
+        raise HTTPException(status_code=400, detail="URL'den veri çekilemedi.")
+
+    prompt = prompt = f"""
+Aşağıdaki metni oku ve bir teknoloji etkinliği objesi oluştur.
+ÖNEMLİ KURAL: SADECE JSON formatında çıktı ver. Kod bloğu (```json) kullanma, fazladan tek bir harf bile yazma.
+
+KOORDİNAT KURALI: Etkinliğin gerçek lokasyonuna göre İstanbul koordinatı ver.
+Örnek koordinatlar:
+- Kadıköy: [40.9927, 29.0277]
+- Beşiktaş: [41.0422, 29.0083]
+- Şişli: [41.0602, 28.9870]
+- Beyoğlu: [41.0335, 28.9779]
+- Üsküdar: [41.0231, 29.0152]
+- Ataşehir: [40.9923, 29.1244]
+- Maslak: [41.1082, 29.0195]
+- Topkapı: [41.0133, 28.9219]
+- Genel İstanbul: [41.0082, 28.9784]
+
+Format: {{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "Staj/Hackathon/Meetup/Etkinlik", "date": "GG Ay YYYY"}}
+Metin: {ham_metin[:3000]}
+"""
+
     try:
-        ham_metin = "Gelecek hafta sonu Levent'te muazzam bir Python Backend Bootcamp var. Herkesi bekleriz. Lokasyon tam Levent Metro çıkışı. Son başvuru: 10 Temmuz 2026."
-        
-        prompt = f"""
-        Aşağıdaki metni oku ve bir etkinlik objesi oluştur.
-        ÖNEMLİ KURAL: SADECE JSON formatında çıktı ver. Kod bloğu (```json) kullanma, fazladan tek bir harf bile yazma.
-        Format: {{ "title": "...", "location": "...", "coordinates": [41.0825, 29.0131], "type": "Workshop", "date": "..." }}
-        Metin: {ham_metin}
-        """
-        
-        # 1. Gemini'ye soruyu sor
         response = model.generate_content(prompt)
-        
-        # 2. Gemini'den gelen cevabı temizle (Bazen markdown ekleyebiliyor)
         ai_text = response.text.replace("```json", "").replace("```", "").strip()
-        
-        # 3. Metni gerçek bir JSON (Python Dictionary) objesine çevir
         etkinlik_data = json.loads(ai_text)
-        
-        # 4. Yapay zekanın ürettiği veriyi DOĞRUDAN SQLite Veritabanına yaz
+
         yeni_etkinlik = EtkinlikDB(
-            title=etkinlik_data["title"],
-            location=etkinlik_data["location"],
-            coordinates=etkinlik_data["coordinates"],
-            type=etkinlik_data["type"],
-            date=etkinlik_data["date"],
-            is_active=True
+            title=etkinlik_data.get("title", "Bilinmeyen Başlık"),
+            location=etkinlik_data.get("location", "İstanbul"),
+            coordinates=etkinlik_data.get("coordinates", [41.0, 29.0]),
+            type=etkinlik_data.get("type", "Meetup"),
+            date=etkinlik_data.get("date", "Belirtilmemiş"),
+            is_active=True,
+            trust_score=0,
+            source_url=request.url
         )
+
         db.add(yeni_etkinlik)
         db.commit()
         db.refresh(yeni_etkinlik)
-        
+
         return {
-            "status": "success", 
-            "message": "AI veriyi üretti ve başarıyla veritabanına kaydetti!", 
+            "status": "success",
+            "message": "AI veriyi başarıyla okudu ve veritabanına kaydetti!",
             "data": yeni_etkinlik
         }
-        
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="AI İşleme Hatası: Gemini geçerli JSON döndüremedi.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI Hatası: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Sistem Hatası: {str(e)}")
+
+# ✅ YENİ: Scheduler'ı manuel tetikleme endpoint'i (test için)
+@app.post("/api/tara-simdi")
+def tara_simdi():
+    """Scheduler'ı beklemeden manuel tetikler — test için."""
+    otomatik_tara()
+    return {"status": "success", "message": "Tüm siteler tarandı!"}
