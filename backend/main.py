@@ -7,6 +7,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import date
 
 from scraper import fetch_raw_text_from_url
 
@@ -46,6 +47,13 @@ class EtkinlikDB(Base):
     trust_score = Column(Integer, default=0)
     source_url = Column(String, nullable=True)
 
+class SwipeGecmisiDB(Base):
+    __tablename__ = "swipe_gecmisi"
+    id = Column(Integer, primary_key=True, index=True)
+    etkinlik_id = Column(Integer, nullable=False)
+    yon = Column(String, nullable=False)
+    tarih = Column(String, nullable=True)
+
 Base.metadata.create_all(bind=engine)
 
 def get_db():
@@ -72,38 +80,39 @@ def otomatik_tara():
     db = SessionLocal()
     try:
         for kaynak in KAYNAK_SITELER:
-            print(f"🔍 Taraniyor: {kaynak['url']}")
+            print(f"🔍 Taranıyor: {kaynak['url']}")
             ham_metin = fetch_raw_text_from_url(kaynak["url"])
 
             if not ham_metin:
                 print(f"⚠️ Veri çekilemedi: {kaynak['url']}")
                 continue
 
-            prompt = prompt = f"""
-Aşağıdaki metni oku ve bir teknoloji etkinliği objesi oluştur.
-ÖNEMLİ KURAL: SADECE JSON formatında çıktı ver. Kod bloğu (```json) kullanma, fazladan tek bir harf bile yazma.
+            prompt = f"""
+            Aşağıdaki metni oku ve bir teknoloji etkinliği objesi oluştur.
+            ÖNEMLİ KURAL: SADECE JSON formatında çıktı ver. Kod bloğu (```json) kullanma, fazladan tek bir harf bile yazma.
+            Etkinlik türü: {kaynak['type']}
 
-KOORDİNAT KURALI: Etkinliğin gerçek lokasyonuna göre İstanbul koordinatı ver.
-Örnek koordinatlar:
-- Kadıköy: [40.9927, 29.0277]
-- Beşiktaş: [41.0422, 29.0083]
-- Şişli: [41.0602, 28.9870]
-- Beyoğlu: [41.0335, 28.9779]
-- Üsküdar: [41.0231, 29.0152]
-- Ataşehir: [40.9923, 29.1244]
-- Maslak: [41.1082, 29.0195]
-- Topkapı: [41.0133, 28.9219]
-- Genel İstanbul: [41.0082, 28.9784]
+            KOORDİNAT KURALI: Etkinliğin gerçek lokasyonuna göre İstanbul koordinatı ver.
+            Örnek koordinatlar:
+            - Kadıköy: [40.9927, 29.0277]
+            - Beşiktaş: [41.0422, 29.0083]
+            - Şişli: [41.0602, 28.9870]
+            - Beyoğlu: [41.0335, 28.9779]
+            - Üsküdar: [41.0231, 29.0152]
+            - Ataşehir: [40.9923, 29.1244]
+            - Maslak: [41.1082, 29.0195]
+            - Topkapı: [41.0133, 28.9219]
+            - Genel İstanbul: [41.0082, 28.9784]
 
-Format: {{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "Staj/Hackathon/Meetup/Etkinlik", "date": "GG Ay YYYY"}}
-Metin: {ham_metin[:3000]}
-"""
+            Format: {{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "{kaynak['type']}", "date": "GG Ay YYYY"}}
+            Metin: {ham_metin[:3000]}
+            """
+
             try:
                 response = model.generate_content(prompt)
                 ai_text = response.text.replace("```json", "").replace("```", "").strip()
                 etkinlik_data = json.loads(ai_text)
 
-                # Aynı URL'den mükerrer kayıt engelle
                 mevcut = db.query(EtkinlikDB).filter(EtkinlikDB.source_url == kaynak["url"]).first()
                 if mevcut:
                     print(f"⏭️ Zaten var, atlandı: {kaynak['url']}")
@@ -169,6 +178,10 @@ class EtkinlikResponse(BaseModel):
 class URLRequest(BaseModel):
     url: str
 
+class SwipeRequest(BaseModel):
+    etkinlik_id: int
+    yon: str
+
 # ---------------------------------------------------------
 # 7. ENDPOINT'LER
 # ---------------------------------------------------------
@@ -183,25 +196,25 @@ def otomatik_etkinlik_ekle(request: URLRequest, db: Session = Depends(get_db)):
     if not ham_metin:
         raise HTTPException(status_code=400, detail="URL'den veri çekilemedi.")
 
-    prompt = prompt = f"""
-Aşağıdaki metni oku ve bir teknoloji etkinliği objesi oluştur.
-ÖNEMLİ KURAL: SADECE JSON formatında çıktı ver. Kod bloğu (```json) kullanma, fazladan tek bir harf bile yazma.
+    prompt = f"""
+    Aşağıdaki metni oku ve bir teknoloji etkinliği objesi oluştur.
+    ÖNEMLİ KURAL: SADECE JSON formatında çıktı ver. Kod bloğu (```json) kullanma, fazladan tek bir harf bile yazma.
 
-KOORDİNAT KURALI: Etkinliğin gerçek lokasyonuna göre İstanbul koordinatı ver.
-Örnek koordinatlar:
-- Kadıköy: [40.9927, 29.0277]
-- Beşiktaş: [41.0422, 29.0083]
-- Şişli: [41.0602, 28.9870]
-- Beyoğlu: [41.0335, 28.9779]
-- Üsküdar: [41.0231, 29.0152]
-- Ataşehir: [40.9923, 29.1244]
-- Maslak: [41.1082, 29.0195]
-- Topkapı: [41.0133, 28.9219]
-- Genel İstanbul: [41.0082, 28.9784]
+    KOORDİNAT KURALI: Etkinliğin gerçek lokasyonuna göre İstanbul koordinatı ver.
+    Örnek koordinatlar:
+    - Kadıköy: [40.9927, 29.0277]
+    - Beşiktaş: [41.0422, 29.0083]
+    - Şişli: [41.0602, 28.9870]
+    - Beyoğlu: [41.0335, 28.9779]
+    - Üsküdar: [41.0231, 29.0152]
+    - Ataşehir: [40.9923, 29.1244]
+    - Maslak: [41.1082, 29.0195]
+    - Topkapı: [41.0133, 28.9219]
+    - Genel İstanbul: [41.0082, 28.9784]
 
-Format: {{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "Staj/Hackathon/Meetup/Etkinlik", "date": "GG Ay YYYY"}}
-Metin: {ham_metin[:3000]}
-"""
+    Format: {{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "Staj/Hackathon/Meetup/Etkinlik", "date": "GG Ay YYYY"}}
+    Metin: {ham_metin[:3000]}
+    """
 
     try:
         response = model.generate_content(prompt)
@@ -234,9 +247,102 @@ Metin: {ham_metin[:3000]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Sistem Hatası: {str(e)}")
 
-# ✅ YENİ: Scheduler'ı manuel tetikleme endpoint'i (test için)
 @app.post("/api/tara-simdi")
 def tara_simdi():
-    """Scheduler'ı beklemeden manuel tetikler — test için."""
     otomatik_tara()
     return {"status": "success", "message": "Tüm siteler tarandı!"}
+
+# ---------------------------------------------------------
+# 8. SWIPE ENDPOINT'İ
+# ---------------------------------------------------------
+@app.post("/api/swipe")
+def swipe_kaydet(request: SwipeRequest, db: Session = Depends(get_db)):
+    yeni_swipe = SwipeGecmisiDB(
+        etkinlik_id=request.etkinlik_id,
+        yon=request.yon,
+        tarih=str(date.today())
+    )
+    db.add(yeni_swipe)
+    db.commit()
+    return {"status": "success", "yon": request.yon}
+
+# ---------------------------------------------------------
+# 9. AI ÖNERİ ENDPOINT'İ
+# ---------------------------------------------------------
+@app.get("/api/oneri")
+def ai_oneri(db: Session = Depends(get_db)):
+    sag_swipe_ids = [s.etkinlik_id for s in db.query(SwipeGecmisiDB).filter(SwipeGecmisiDB.yon == "sag").all()]
+    sol_swipe_ids = [s.etkinlik_id for s in db.query(SwipeGecmisiDB).filter(SwipeGecmisiDB.yon == "sol").all()]
+
+    tum_etkinlikler = db.query(EtkinlikDB).all()
+    swipe_edilmemis = [e for e in tum_etkinlikler if e.id not in sag_swipe_ids and e.id not in sol_swipe_ids]
+
+    if not swipe_edilmemis:
+        return []
+
+    begenilen_tipler = []
+    if sag_swipe_ids:
+        begenilen = db.query(EtkinlikDB).filter(EtkinlikDB.id.in_(sag_swipe_ids)).all()
+        begenilen_tipler = list(set([e.type for e in begenilen]))
+
+    if not begenilen_tipler:
+        return tum_etkinlikler[:10]
+
+    # ✅ DÜZELTİLDİ: f-string dışında list oluşturuyoruz
+    etkinlik_listesi = [{"id": e.id, "title": e.title, "type": e.type} for e in swipe_edilmemis]
+
+    prompt = f"""
+    Kullanıcı şu tür etkinlikleri beğendi: {begenilen_tipler}
+
+    Aşağıdaki etkinlikleri kullanıcının ilgi alanına göre sırala.
+    ÖNEMLİ KURAL: SADECE JSON array formatında çıktı ver. Kod bloğu kullanma.
+    Format: [1, 3, 2] (etkinlik id'lerini sıralı olarak döndür)
+
+    Etkinlikler: {etkinlik_listesi}
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        ai_text = response.text.replace("```json", "").replace("```", "").strip()
+        sirali_ids = json.loads(ai_text)
+
+        etkinlik_map = {e.id: e for e in swipe_edilmemis}
+        sirali_etkinlikler = [etkinlik_map[id] for id in sirali_ids if id in etkinlik_map]
+        return sirali_etkinlikler
+
+    except Exception:
+        return swipe_edilmemis
+
+ # ---------------------------------------------------------
+# 10. KARİYER CHATBOT ENDPOINT'İ
+# ---------------------------------------------------------
+class ChatRequest(BaseModel):
+    mesaj: str
+
+@app.post("/api/chat")
+def kariyer_chat(request: ChatRequest, db: Session = Depends(get_db)):
+    # Mevcut ilanları DB'den çek
+    ilanlar = db.query(EtkinlikDB).all()
+    ilan_listesi = [{"title": e.title, "type": e.type, "location": e.location, "date": e.date} for e in ilanlar]
+
+    prompt = f"""
+Sen TechYaka'nın AI kariyer asistanısın. İstanbul'daki mühendislik öğrencilerine kariyer tavsiyeleri veriyorsun.
+
+Mevcut ilanlar:
+{ilan_listesi}
+
+Kullanıcının sorusu: {request.mesaj}
+
+KURALLAR:
+- Samimi, enerjik ve motive edici konuş
+- Türkçe cevap ver
+- Kısa ve öz ol (max 3-4 cümle)
+- İlgili ilan varsa bahset
+- Emoji kullan ama abartma
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        return {"cevap": response.text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chat Hatası: {str(e)}")
