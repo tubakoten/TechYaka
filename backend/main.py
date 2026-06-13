@@ -470,7 +470,6 @@ def profil_getir(db: Session = Depends(get_db), kullanici=Depends(mevcut_kullani
     if not profil:
         return {}
     return profil
-
 @app.post("/api/cv-yukle")
 async def cv_yukle(file: UploadFile = File(...), db: Session = Depends(get_db), kullanici=Depends(mevcut_kullanici)):
     try:
@@ -479,11 +478,9 @@ async def cv_yukle(file: UploadFile = File(...), db: Session = Depends(get_db), 
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(icerik))
         cv_metin = "".join([s.extract_text() + "\n" for s in pdf_reader.pages])
 
-        # CV değerlendirme prompt
         degerlendirme_prompt = f"""
 Aşağıdaki CV'yi bir kariyer uzmanı olarak değerlendir.
 SADECE JSON formatında çıktı ver. Kod bloğu kullanma.
-
 Format:
 {{
   "puan": 75,
@@ -492,17 +489,13 @@ Format:
   "gelistirilmesi_gerekenler": ["madde1", "madde2"],
   "oneriler": ["öneri1", "öneri2", "öneri3"]
 }}
-
-Puan 0-100 arası. Türkçe yaz. Mühendislik öğrencisi için değerlendir.
-
-CV:
-{cv_metin[:4000]}
+Puan 0-100. Türkçe. Mühendislik öğrencisi için değerlendir.
+CV: {cv_metin[:4000]}
 """
         degerlendirme_response = model.generate_content(degerlendirme_prompt)
         deg_text = degerlendirme_response.text.replace("```json", "").replace("```", "").strip()
         degerlendirme = json.loads(deg_text)
 
-        # Profil'e kaydet
         kullanici_id = kullanici.id if kullanici else None
         profil = db.query(KullaniciProfilDB).filter(
             KullaniciProfilDB.kullanici_id == kullanici_id
@@ -519,6 +512,10 @@ CV:
             "karakter_sayisi": len(cv_metin),
             "degerlendirme": degerlendirme
         }
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import Hatası: {str(e)}")
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"JSON Hatası: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"CV Hatası: {str(e)}")
 
