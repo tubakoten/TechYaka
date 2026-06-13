@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 
-const API = 'http://127.0.0.1:8000';
+const API = 'https://techyaka.onrender.com';
 
 const getEventIcon = (type, isDarkMode) => {
   const colors = {
