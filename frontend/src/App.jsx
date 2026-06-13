@@ -106,7 +106,9 @@ function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [activeEvent, setActiveEvent] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(
+    localStorage.getItem('techyaka_theme') === 'dark'
+  );
   const [homeFilter, setHomeFilter] = useState('swipe');
   const [savedEventIds, setSavedEventIds] = useState([]);
   const [backendEvents, setBackendEvents] = useState([]);
@@ -439,7 +441,11 @@ function App() {
                 <p className="font-extrabold text-gray-900 dark:text-white text-sm">Tema Seçimi</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" checked={isDarkMode} onChange={() => setIsDarkMode(!isDarkMode)} />
+                <input type="checkbox" className="sr-only peer" checked={isDarkMode} onChange={() => {
+  const yeni = !isDarkMode;
+  setIsDarkMode(yeni);
+  localStorage.setItem('techyaka_theme', yeni ? 'dark' : 'light');
+}} />
                 <div className="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#094D92]"></div>
               </label>
             </div>
