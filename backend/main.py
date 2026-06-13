@@ -545,3 +545,7 @@ def uyumluluk_skoru(etkinlik_id: int, db: Session = Depends(get_db), kullanici=D
         return json.loads(ai_text)
     except Exception:
         return {"skor": None, "aciklama": "Skor hesaplanamadı"}
+
+@app.get("/ping")
+def ping():
+    return {"status": "alive", "message": "TechYaka is running! 🚀"}
