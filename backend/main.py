@@ -128,6 +128,11 @@ KAYNAK_SITELER = [
     {"url": "https://kommunity.com/events", "type": "Meetup"},
     {"url": "https://www.eventbrite.com/d/turkey--istanbul/tech/", "type": "Etkinlik"},
     {"url": "https://www.youthall.com/tr/internships/", "type": "Staj"},
+    {"url": "https://www.youthall.com/tr/jobs/", "type": "Staj"},
+    {"url": "https://www.kariyer.net/is-ilanlari?sehirler=34", "type": "Staj"},
+    {"url": "https://kommunity.com/tr/events", "type": "Meetup"},
+    {"url": "https://www.eventbrite.com/d/turkey--istanbul/hackathon/", "type": "Hackathon"},
+    {"url": "https://www.etkinlikdefteri.com/kategori/teknoloji", "type": "Etkinlik"},
 ]
 
 # ---------------------------------------------------------
