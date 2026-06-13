@@ -30,10 +30,7 @@ function UyumlulukRozeti({ etkinlikId, token }) {
   useEffect(() => {
     fetch(`${API}/api/uyumluluk/${etkinlikId}`, {
       headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-    })
-      .then(r => r.json())
-      .then(data => { if (data.skor) setSkor(data.skor); })
-      .catch(() => {});
+    }).then(r => r.json()).then(data => { if (data.skor) setSkor(data.skor); }).catch(() => {});
   }, [etkinlikId, token]);
   if (!skor) return null;
   const renk = skor >= 80 ? 'bg-green-500' : skor >= 60 ? 'bg-yellow-500' : 'bg-red-400';
@@ -83,10 +80,25 @@ function SwipeKarti({ event, onSwipe, token }) {
   );
 }
 
+function ChatMesaj({ msg }) {
+  const parcalar = msg.metin.split(/(https?:\/\/[^\s\)]+)/g);
+  return (
+    <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm font-medium leading-relaxed ${msg.rol === 'kullanici' ? 'bg-[#094D92] text-white rounded-br-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-bl-sm'}`}>
+      {parcalar.map((parca, idx) =>
+        parca.match(/^https?:\/\//) ? (
+          <a key={idx} href={parca} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 bg-[#094D92] text-white text-[10px] font-black px-2 py-1 rounded-lg mx-1">
+            🔗 İlana Git
+          </a>
+        ) : parca
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useState(localStorage.getItem('techyaka_token'));
   const [kullanici, setKullanici] = useState(JSON.parse(localStorage.getItem('techyaka_kullanici') || 'null'));
-  const [authMod, setAuthMod] = useState('giris'); // 'giris' | 'kayit'
+  const [authMod, setAuthMod] = useState('giris');
   const [authForm, setAuthForm] = useState({ email: '', sifre: '', ad_soyad: '' });
   const [authHata, setAuthHata] = useState('');
   const [authYukleniyor, setAuthYukleniyor] = useState(false);
@@ -109,6 +121,7 @@ function App() {
   const [profilKaydediliyor, setProfilKaydediliyor] = useState(false);
   const [cvYukleniyor, setCvYukleniyor] = useState(false);
   const [profilMesaj, setProfilMesaj] = useState('');
+  const [cvDegerlendirme, setCvDegerlendirme] = useState(null);
   const [appliedEvents, setAppliedEvents] = useState([]);
 
   const authHeaders = token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
@@ -121,8 +134,7 @@ function App() {
         coordinates: e.coordinates, category: e.type,
         date_start: e.date, deadline: "Yakında", level: "Genel",
         url: e.source_url || "#"
-      }))))
-      .catch(console.error);
+      })))).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -139,57 +151,39 @@ function App() {
   }, [isDarkMode]);
 
   const handleGiris = async () => {
-    setAuthYukleniyor(true);
-    setAuthHata('');
+    setAuthYukleniyor(true); setAuthHata('');
     try {
-      const res = await fetch(`${API}/api/giris`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: authForm.email, sifre: authForm.sifre })
-      });
+      const res = await fetch(`${API}/api/giris`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: authForm.email, sifre: authForm.sifre }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Giriş başarısız');
       localStorage.setItem('techyaka_token', data.token);
       localStorage.setItem('techyaka_kullanici', JSON.stringify(data.kullanici));
-      setToken(data.token);
-      setKullanici(data.kullanici);
-    } catch (e) {
-      setAuthHata(e.message);
-    } finally { setAuthYukleniyor(false); }
+      setToken(data.token); setKullanici(data.kullanici);
+    } catch (e) { setAuthHata(e.message); }
+    finally { setAuthYukleniyor(false); }
   };
 
   const handleKayit = async () => {
-    setAuthYukleniyor(true);
-    setAuthHata('');
+    setAuthYukleniyor(true); setAuthHata('');
     try {
-      const res = await fetch(`${API}/api/kayit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(authForm)
-      });
+      const res = await fetch(`${API}/api/kayit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(authForm) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Kayıt başarısız');
       localStorage.setItem('techyaka_token', data.token);
       localStorage.setItem('techyaka_kullanici', JSON.stringify(data.kullanici));
-      setToken(data.token);
-      setKullanici(data.kullanici);
-    } catch (e) {
-      setAuthHata(e.message);
-    } finally { setAuthYukleniyor(false); }
+      setToken(data.token); setKullanici(data.kullanici);
+    } catch (e) { setAuthHata(e.message); }
+    finally { setAuthYukleniyor(false); }
   };
 
   const handleCikis = () => {
     localStorage.removeItem('techyaka_token');
     localStorage.removeItem('techyaka_kullanici');
-    setToken(null);
-    setKullanici(null);
+    setToken(null); setKullanici(null);
   };
 
   const handleSwipe = (event, yon) => {
-    fetch(`${API}/api/swipe`, {
-      method: 'POST', headers: authHeaders,
-      body: JSON.stringify({ etkinlik_id: event.id, yon })
-    });
+    fetch(`${API}/api/swipe`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ etkinlik_id: event.id, yon }) });
     if (yon === 'sag') setSavedEventIds(prev => [...prev, event.id]);
     setSwipeGecmisi(prev => [...prev, { id: event.id, yon }]);
   };
@@ -201,10 +195,7 @@ function App() {
     setChatMesajlar(prev => [...prev, { rol: 'kullanici', metin: msg }]);
     setChatYukleniyor(true);
     try {
-      const res = await fetch(`${API}/api/chat`, {
-        method: 'POST', headers: authHeaders,
-        body: JSON.stringify({ mesaj: msg })
-      });
+      const res = await fetch(`${API}/api/chat`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ mesaj: msg }) });
       const data = await res.json();
       setChatMesajlar(prev => [...prev, { rol: 'ai', metin: data.cevap }]);
     } catch {
@@ -235,8 +226,9 @@ function App() {
         body: formData
       });
       const data = await res.json();
-      setProfilMesaj(`✅ CV yüklendi! (${data.karakter_sayisi} karakter)`);
-      setTimeout(() => setProfilMesaj(''), 3000);
+      setCvDegerlendirme(data.degerlendirme);
+      setProfilMesaj(`✅ CV yüklendi! Puan: ${data.degerlendirme?.puan}/100`);
+      setTimeout(() => setProfilMesaj(''), 5000);
     } catch { setProfilMesaj('❌ CV yüklenemedi'); }
     finally { setCvYukleniyor(false); }
   };
@@ -264,9 +256,6 @@ function App() {
     document.getElementById(`event-card-${event.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   };
 
-  // ---------------------------------------------------------
-  // AUTH EKRANI
-  // ---------------------------------------------------------
   if (!token) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f4f6f8] px-6 font-sans relative overflow-hidden">
@@ -282,13 +271,10 @@ function App() {
             <h1 className="text-3xl font-black text-gray-900 tracking-tight">TechYaka</h1>
             <p className="text-[#094D92] mt-1 text-sm font-semibold uppercase tracking-widest">Geleceğin kariyer haritası</p>
           </div>
-
-          {/* Sekme */}
           <div className="flex bg-gray-100 rounded-2xl p-1 mb-6">
             <button onClick={() => setAuthMod('giris')} className={`flex-1 py-2 text-sm font-extrabold rounded-xl transition-all ${authMod === 'giris' ? 'bg-white text-[#094D92] shadow-sm' : 'text-gray-500'}`}>Giriş Yap</button>
             <button onClick={() => setAuthMod('kayit')} className={`flex-1 py-2 text-sm font-extrabold rounded-xl transition-all ${authMod === 'kayit' ? 'bg-white text-[#094D92] shadow-sm' : 'text-gray-500'}`}>Kayıt Ol</button>
           </div>
-
           <div className="space-y-4">
             {authMod === 'kayit' && (
               <div>
@@ -302,16 +288,10 @@ function App() {
             </div>
             <div>
               <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1 ml-1">Şifre</label>
-              <input type="password" value={authForm.sifre} onChange={e => setAuthForm(p => ({ ...p, sifre: e.target.value }))} placeholder="••••••" className="w-full border-2 border-gray-100 bg-gray-50 rounded-xl px-4 py-3 focus:outline-none focus:border-[#68B684] text-sm font-medium text-gray-900" onKeyDown={e => e.key === 'Enter' && (authMod === 'giris' ? handleGiris() : handleKayit())} />
+              <input type="password" value={authForm.sifre} onChange={e => setAuthForm(p => ({ ...p, sifre: e.target.value }))} placeholder="••••••" onKeyDown={e => e.key === 'Enter' && (authMod === 'giris' ? handleGiris() : handleKayit())} className="w-full border-2 border-gray-100 bg-gray-50 rounded-xl px-4 py-3 focus:outline-none focus:border-[#68B684] text-sm font-medium text-gray-900" />
             </div>
-
             {authHata && <p className="text-red-500 text-sm font-bold text-center">{authHata}</p>}
-
-            <button
-              onClick={authMod === 'giris' ? handleGiris : handleKayit}
-              disabled={authYukleniyor}
-              className="w-full bg-[#094D92] text-white font-extrabold rounded-xl py-4 hover:bg-[#073d75] transition-colors shadow-lg disabled:opacity-50"
-            >
+            <button onClick={authMod === 'giris' ? handleGiris : handleKayit} disabled={authYukleniyor} className="w-full bg-[#094D92] text-white font-extrabold rounded-xl py-4 hover:bg-[#073d75] transition-colors shadow-lg disabled:opacity-50">
               {authYukleniyor ? 'Yükleniyor...' : authMod === 'giris' ? 'Giriş Yap' : 'Hesap Oluştur'}
             </button>
           </div>
@@ -328,7 +308,7 @@ function App() {
         return (
           <div className="h-full overflow-y-auto pb-32 bg-[#f4f6f8] dark:bg-[#1C1018] px-6 pt-12 transition-colors duration-500">
             <div className="mb-6">
-              <h1 className="text-3xl font-black text-gray-900 dark:text-white leading-tight">Merhaba {kullanici?.ad_soyad?.split(' ')[0] || 'Deniz'} 👋</h1>
+              <h1 className="text-3xl font-black text-gray-900 dark:text-white leading-tight">Merhaba {kullanici?.ad_soyad?.split(' ')[0]} 👋</h1>
               <p className="text-gray-500 dark:text-gray-400 font-medium mt-1">İstanbul'da {backendEvents.length} fırsat seni bekliyor.</p>
             </div>
             <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide mb-6">
@@ -362,7 +342,9 @@ function App() {
               )
             ) : (
               <div className="space-y-4">
-                {backendEvents.filter(e => e.category === homeFilter).map(event => (
+                {backendEvents.filter(e => e.category === homeFilter).length === 0 ? (
+                  <div className="text-center py-10 text-gray-400">Bu kategoride henüz etkinlik yok.</div>
+                ) : backendEvents.filter(e => e.category === homeFilter).map(event => (
                   <div key={event.id} onClick={() => handleOpenModal(event)} className="bg-white dark:bg-gray-800 p-5 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer">
                     <div className="flex justify-between items-start mb-3">
                       <span className="flex items-center gap-2 text-[10px] font-black uppercase px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
@@ -450,6 +432,7 @@ function App() {
         return (
           <div className="h-full overflow-y-auto pb-32 bg-[#f4f6f8] dark:bg-[#1C1018] px-6 pt-12">
             <h1 className="text-3xl font-black text-gray-900 dark:text-white mb-6">Profil</h1>
+
             <div className="bg-white dark:bg-gray-800 rounded-[2rem] p-5 shadow-sm border border-gray-100 dark:border-gray-700 mb-4 flex justify-between items-center">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isDarkMode ? 'bg-[#094D92] text-white' : 'bg-yellow-100 text-yellow-500'}`}>{isDarkMode ? '🌙' : '☀️'}</div>
@@ -501,6 +484,30 @@ function App() {
                 <span className="text-sm font-bold text-[#094D92]">{cvYukleniyor ? 'Yükleniyor...' : 'PDF CV seç'}</span>
               </label>
             </div>
+
+            {cvDegerlendirme && (
+              <div className="bg-white dark:bg-gray-800 rounded-[2rem] p-6 shadow-sm border border-gray-100 dark:border-gray-700 mb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-black text-gray-900 dark:text-white">🎯 CV Değerlendirmesi</h2>
+                  <span className={`text-2xl font-black px-4 py-1 rounded-full text-white ${cvDegerlendirme.puan >= 80 ? 'bg-green-500' : cvDegerlendirme.puan >= 60 ? 'bg-yellow-500' : 'bg-red-400'}`}>
+                    {cvDegerlendirme.puan}/100
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{cvDegerlendirme.ozet}</p>
+                <div className="mb-3">
+                  <p className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-2">✅ Güçlü Yönler</p>
+                  {cvDegerlendirme.guclu_yonler?.map((item, i) => <p key={i} className="text-xs text-gray-600 dark:text-gray-400 mb-1">• {item}</p>)}
+                </div>
+                <div className="mb-3">
+                  <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-2">⚠️ Geliştirilmesi Gerekenler</p>
+                  {cvDegerlendirme.gelistirilmesi_gerekenler?.map((item, i) => <p key={i} className="text-xs text-gray-600 dark:text-gray-400 mb-1">• {item}</p>)}
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-[#094D92] uppercase tracking-widest mb-2">💡 Öneriler</p>
+                  {cvDegerlendirme.oneriler?.map((item, i) => <p key={i} className="text-xs text-gray-600 dark:text-gray-400 mb-1">• {item}</p>)}
+                </div>
+              </div>
+            )}
 
             <button onClick={handleCikis} className="w-full bg-white dark:bg-gray-800 border border-red-100 text-red-500 font-extrabold rounded-2xl py-4 hover:bg-red-50 transition-colors">Çıkış Yap</button>
           </div>
@@ -582,7 +589,7 @@ function App() {
             {chatMesajlar.map((msg, i) => (
               <div key={i} className={`flex ${msg.rol === 'kullanici' ? 'justify-end' : 'justify-start'}`}>
                 {msg.rol === 'ai' && <div className="w-7 h-7 bg-[#094D92]/10 rounded-full flex items-center justify-center text-sm mr-2 shrink-0 mt-1">🤖</div>}
-                <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm font-medium leading-relaxed ${msg.rol === 'kullanici' ? 'bg-[#094D92] text-white rounded-br-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-bl-sm'}`}>{msg.metin}</div>
+                <ChatMesaj msg={msg} />
               </div>
             ))}
             {chatYukleniyor && (

@@ -142,36 +142,59 @@ def otomatik_tara():
             ham_metin = fetch_raw_text_from_url(kaynak["url"])
             if not ham_metin:
                 continue
+
             prompt = f"""
-            Aşağıdaki metni oku ve bir teknoloji etkinliği objesi oluştur.
-            SADECE JSON formatında çıktı ver. Kod bloğu kullanma.
-            KOORDİNAT: Gerçek lokasyona göre İstanbul koordinatı ver.
-            - Kadıköy: [40.9927, 29.0277] - Beşiktaş: [41.0422, 29.0083]
-            - Şişli: [41.0602, 28.9870] - Beyoğlu: [41.0335, 28.9779]
-            - Genel İstanbul: [41.0082, 28.9784]
-            Format: {{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "{kaynak['type']}", "date": "GG Ay YYYY"}}
-            Metin: {ham_metin[:3000]}
-            """
+Aşağıdaki metni oku ve teknoloji etkinliklerini listele.
+SADECE JSON array formatında çıktı ver. Kod bloğu kullanma.
+Maksimum 5 etkinlik çıkar. Bulamazsan boş array döndür: []
+
+KOORDİNAT: Gerçek lokasyona göre İstanbul koordinatı ver.
+- Kadıköy: [40.9927, 29.0277] - Beşiktaş: [41.0422, 29.0083]
+- Şişli: [41.0602, 28.9870] - Beyoğlu: [41.0335, 28.9779]
+- Genel İstanbul: [41.0082, 28.9784]
+
+Format: [{{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "{kaynak['type']}", "date": "GG Ay YYYY", "url": "ilanın direkt linki veya boş string"}}]
+Metin: {ham_metin[:5000]}
+"""
+
             try:
                 response = model.generate_content(prompt)
                 ai_text = response.text.replace("```json", "").replace("```", "").strip()
-                etkinlik_data = json.loads(ai_text)
-                mevcut = db.query(EtkinlikDB).filter(EtkinlikDB.source_url == kaynak["url"]).first()
-                if mevcut:
-                    continue
-                yeni = EtkinlikDB(
-                    title=etkinlik_data.get("title", "Bilinmeyen"),
-                    location=etkinlik_data.get("location", "İstanbul"),
-                    coordinates=etkinlik_data.get("coordinates", [41.0082, 28.9784]),
-                    type=kaynak["type"],
-                    date=etkinlik_data.get("date", "Belirtilmemiş"),
-                    is_active=True, trust_score=0, source_url=kaynak["url"]
-                )
-                db.add(yeni)
-                db.commit()
-                print(f"✅ Kaydedildi: {yeni.title}")
+                etkinlik_listesi = json.loads(ai_text)
+
+                if not isinstance(etkinlik_listesi, list):
+                    etkinlik_listesi = [etkinlik_listesi]
+
+                for etkinlik_data in etkinlik_listesi:
+                    title = etkinlik_data.get("title", "Bilinmeyen")
+                    if title in ["Bilinmeyen", "Grup Bulunamadı", ""]:
+                        continue
+                    mevcut = db.query(EtkinlikDB).filter(EtkinlikDB.title == title).first()
+                    if mevcut:
+                        continue
+
+                    import urllib.parse
+                    ilan_url = etkinlik_data.get("url", "")
+                    if not ilan_url:
+                        arama = urllib.parse.quote(f"{title} site:{kaynak['url'].split('/')[2]}")
+                        ilan_url = f"https://www.google.com/search?q={arama}"
+
+                    yeni = EtkinlikDB(
+                        title=title,
+                        location=etkinlik_data.get("location", "İstanbul"),
+                        coordinates=etkinlik_data.get("coordinates", [41.0082, 28.9784]),
+                        type=kaynak["type"],
+                        date=etkinlik_data.get("date", "Belirtilmemiş"),
+                        is_active=True,
+                        trust_score=0,
+                        source_url=ilan_url
+                    )
+                    db.add(yeni)
+                    db.commit()
+                    print(f"✅ Kaydedildi: {yeni.title}")
+
             except Exception as e:
-                print(f"❌ Hata: {str(e)}")
+                print(f"❌ Hata ({kaynak['url']}): {str(e)}")
                 continue
     finally:
         db.close()
@@ -363,15 +386,50 @@ def ai_oneri(db: Session = Depends(get_db), kullanici=Depends(mevcut_kullanici))
 # 11. CHAT ENDPOİNT'İ
 # ---------------------------------------------------------
 @app.post("/api/chat")
-def kariyer_chat(request: ChatRequest, db: Session = Depends(get_db)):
+def kariyer_chat(request: ChatRequest, db: Session = Depends(get_db), kullanici=Depends(mevcut_kullanici)):
     ilanlar = db.query(EtkinlikDB).all()
-    ilan_listesi = [{"title": e.title, "type": e.type, "location": e.location} for e in ilanlar]
+    ilan_listesi = [{"title": e.title, "type": e.type, "location": e.location, "date": e.date, "url": e.source_url} for e in ilanlar]
+
+    # Kullanıcı profilini de ekle
+    profil_metin = ""
+    if kullanici:
+        profil = db.query(KullaniciProfilDB).filter(KullaniciProfilDB.kullanici_id == kullanici.id).first()
+        if profil:
+            profil_metin = f"""
+Kullanıcı Profili:
+- Ad: {kullanici.ad_soyad}
+- Bölüm: {profil.bolum or 'Belirtilmemiş'}
+- Sınıf: {profil.sinif or 'Belirtilmemiş'}
+- Beceriler: {profil.beceriler or 'Belirtilmemiş'}
+- İlgi Alanları: {profil.ilgi_alanlari or 'Belirtilmemiş'}
+"""
+
     prompt = f"""
-    Sen TechYaka'nın AI kariyer asistanısın. İstanbul'daki mühendislik öğrencilerine kariyer tavsiyeleri veriyorsun.
-    Mevcut ilanlar: {ilan_listesi}
-    Kullanıcının sorusu: {request.mesaj}
-    Samimi, motive edici, Türkçe, max 3-4 cümle, emoji kullan ama abartma.
-    """
+Sen TechYaka'nın AI kariyer asistanısın. İstanbul'daki mühendislik öğrencilerine kariyer tavsiyeleri veriyorsun.
+
+{profil_metin}
+
+Platformdaki mevcut ilanlar:
+{ilan_listesi}
+
+GÖREVLERIN:
+1. Staj, hackathon, meetup ve kariyer hakkında sorulara cevap ver
+2. Kullanıcının profiline göre kişiselleştirilmiş tavsiye ver
+3. İlgili ilan varsa başlığını ve URL'sini paylaş
+4. CV yazımı, mülakat hazırlığı, LinkedIn optimizasyonu hakkında tavsiye ver
+5. Motivasyon ver, pozitif ve enerjik ol
+
+KURALLAR:
+- Her zaman Türkçe cevap ver
+- Max 4-5 cümle, kısa ve öz ol
+- Emoji kullan ama abartma (max 2-3)
+- Kullanıcının adını ara sıra kullan
+- Somut ve uygulanabilir tavsiyeler ver
+- Platforma özel: "TechYaka'da şu an X ilanı var, incelemelisin!" gibi yönlendirmeler yap
+
+Kullanıcının sorusu: {request.mesaj}
+"""
+
     try:
         response = model.generate_content(prompt)
         return {"cevap": response.text}
@@ -415,16 +473,47 @@ async def cv_yukle(file: UploadFile = File(...), db: Session = Depends(get_db), 
         icerik = await file.read()
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(icerik))
         cv_metin = "".join([s.extract_text() + "\n" for s in pdf_reader.pages])
+
+        # CV değerlendirme prompt
+        degerlendirme_prompt = f"""
+Aşağıdaki CV'yi bir kariyer uzmanı olarak değerlendir.
+SADECE JSON formatında çıktı ver. Kod bloğu kullanma.
+
+Format:
+{{
+  "puan": 75,
+  "ozet": "Genel bir değerlendirme cümlesi",
+  "guclu_yonler": ["madde1", "madde2", "madde3"],
+  "gelistirilmesi_gerekenler": ["madde1", "madde2"],
+  "oneriler": ["öneri1", "öneri2", "öneri3"]
+}}
+
+Puan 0-100 arası. Türkçe yaz. Mühendislik öğrencisi için değerlendir.
+
+CV:
+{cv_metin[:4000]}
+"""
+        degerlendirme_response = model.generate_content(degerlendirme_prompt)
+        deg_text = degerlendirme_response.text.replace("```json", "").replace("```", "").strip()
+        degerlendirme = json.loads(deg_text)
+
+        # Profil'e kaydet
         kullanici_id = kullanici.id if kullanici else None
         profil = db.query(KullaniciProfilDB).filter(
             KullaniciProfilDB.kullanici_id == kullanici_id
         ).first() if kullanici_id else db.query(KullaniciProfilDB).first()
+
         if profil:
             profil.cv_metin = cv_metin[:5000]
         else:
             db.add(KullaniciProfilDB(cv_metin=cv_metin[:5000], kullanici_id=kullanici_id))
         db.commit()
-        return {"status": "success", "karakter_sayisi": len(cv_metin)}
+
+        return {
+            "status": "success",
+            "karakter_sayisi": len(cv_metin),
+            "degerlendirme": degerlendirme
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"CV Hatası: {str(e)}")
 
