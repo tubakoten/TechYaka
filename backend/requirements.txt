@@ -8,6 +8,7 @@ apscheduler
 beautifulsoup4
 requests
 PyPDF2
+pypdf
 python-multipart
 python-jose[cryptography]
 bcrypt
