@@ -71,35 +71,20 @@ npm run dev
 
 ## 📁 Klasör Yapısı
 TechYaka/
-
 ├── backend/          # FastAPI backend
-
 │   ├── main.py       # Ana uygulama
-
 │   ├── scraper.py    # Web scraper
-
 │   └── requirements.txt
-
 ├── frontend/         # React frontend
-
 │   └── src/
-
 │       └── App.jsx   # Ana bileşen
-
 ├── prodocs/          # Proje dokümanları
-
 │   ├── PRD.md
-
 │   ├── tech-stack.md
-
 │   ├── Plan.md
-
 │   ├── DesignSystem.md
-
 │   └── Progress.md
-
 ├── .env.example
-
 └── README.md
 
 ---
