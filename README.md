@@ -1,34 +1,117 @@
 # TechYaka 🗺️
 > İstanbul'daki mühendislik öğrencileri için AI destekli kariyer radar uygulaması.
 
-## 🚀 Nedir?
-TechYaka, İstanbul'daki staj, hackathon ve tech meetup ilanlarını yapay zeka ile otomatik toplayıp interaktif bir harita üzerinde sunan mobil-first bir web uygulamasıdır.
+**🌐 Canlı Demo:** [tech-yaka.vercel.app](https://tech-yaka.vercel.app)
+
+---
+
+## 🎯 Problem
+İstanbul'daki mühendislik öğrencileri staj, hackathon ve tech etkinlik ilanlarını LinkedIn, WhatsApp grupları ve onlarca farklı sitede takip etmek zorunda kalıyor. Bu dağınık yapı fırsatların kaçırılmasına yol açıyor.
+
+## 💡 Çözüm
+TechYaka, tüm ilanları yapay zeka ile otomatik toplayıp interaktif bir harita üzerinde sunar. "Bugün yakınımda ne var?" sorusuna tek ekranda cevap verir.
+
+---
 
 ## ✨ Özellikler
-- 🗺️ İnteraktif harita ile lokasyon bazlı ilanlar
-- 🤖 Gemini AI ile otomatik ilan toplama ve parsing
-- 💫 Tinder-style swipe sistemi
-- 🎯 CV bazlı AI uyumluluk skoru
-- 💬 Kariyer AI chatbotu
-- 🔐 JWT tabanlı kullanıcı sistemi
-- ⏰ Gece otomatik scraping (APScheduler)
+
+| Özellik | Açıklama |
+|---------|----------|
+| 🗺️ İnteraktif Harita | Lokasyon bazlı renkli pin sistemi |
+| 🤖 AI İlan Toplama | Gemini ile otomatik scraping ve parsing |
+| 💫 Swipe Sistemi | Tinder-style ilan keşfi |
+| 🎯 Uyumluluk Skoru | CV bazlı AI eşleşme yüzdesi |
+| 💬 Kariyer Chatbote CV puanlama ve analiz |
+| 🔐 Auth Sistemi | JWT tabanlı kayıt/giriş |
+| ⏰ Otomatik Güncelleme | Gece otomatik ilan taraması |
+
+---
 
 ## 🛠️ Tech Stack
-- **Backend:** FastAPI, SQLite, SQLAlchemy, APScheduler
-- **AI:** Google Gemini 2.5 Flash
-- **Frontend:** React, Vite, Tailwind CSS, Framer Motion
-- **Harita:** React Leaflet, OpenStreetMap
-
-## 🏃 Kurulum
 
 ### Backend
-```bash
-cd backend
-pip install -r requirements.txt
+- **FastAPI** — REST API
+- **SQLite + SQLAlchemy** — Veritabanı
+- **APScheduler** — Zamanlanmış görevler
+- **JWT + bcrypt** — Kimlik doğrulama
+
+### AI & Scraping
+- **Google Gemini 2.5 Flash** — İlan parsing, uyumluluk skoru, chatbot, CV değerlendirme
+- **BeautifulSoup4** — Web scraping
+
+### Frontend
+- **React + Vite** — UI framework
+- **Tailwind CSS** — Styling (Dark mode-first)
+- **Framer Motion** — Swipe animasyonları
+- **React Leaflet** — OpenStreetMap entegrasyonu
+
+---
+
+## 🤖 AI Kullanımı
+
+Gemini 2.5 Flash 4 farklı yerde kullanıldı:
+
+1. **İlan Parser** — Ham HTML → Yapılandırılmış JSON
+2. **Uyumluluk Skoru** — CV + Profil × İlan = %85 uyumlu
+3. **Kariyer Chatbotu** — Kişiselleştirilmiş kariyer tavsiyeleri
+4. **CV Değerlendirici** — 0-100 puan + güçinstall -r requirements.txt
 cp .env.example .env
 # .env dosyasına GEMINI_API_KEY ekle
 python3 -m uvicorn main:app --reload
 ```
 
 ### Frontend
-``� Klasör Yapısı
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## 📁 Klasör Yapısı
+TechYaka/
+
+├── backend/          # FastAPI backend
+
+│   ├── main.py       # Ana uygulama
+
+│   ├── scraper.py    # Web scraper
+
+│   └── requirements.txt
+
+├── frontend/         # React frontend
+
+│   └── src/
+
+│       └── App.jsx   # Ana bileşen
+
+├── prodocs/          # Proje dokümanları
+
+│   ├── PRD.md
+
+│   ├── tech-stack.md
+
+│   ├── Plan.md
+
+│   ├── DesignSystem.md
+
+│   └── Progress.md
+
+├── .env.example
+
+└── README.md
+
+---
+
+## 🚀 Deploy
+
+- **Backend:** [Render](https://render.com) — `https://techyaka.onrender.com`
+- **Frontend:** [Vercel](https://vercel.com) — `https://tech-yaka.vercel.app`
+
+---
+
+## 👤 Geliştirici
+
+**Tuba Köten** — CPO & Full-Stack Developer  
+Doğuş Üniversitesi, Bilgisayar Mühendisliği
