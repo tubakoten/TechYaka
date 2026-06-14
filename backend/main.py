@@ -514,6 +514,11 @@ def uyumluluk_skoru(etkinlik_id: int, db: Session = Depends(get_db), kullanici=D
     except Exception:
         return {"skor": None, "aciklama": "Skor hesaplanamadı"}
 
+        
+@app.get("/api/tara-simdi-get")
+def tara_simdi_get():
+    otomatik_tara()
+    return {"status": "success", "message": "Tüm siteler tarandı!"}
 # ---------------------------------------------------------
 # 14. PING
 # ---------------------------------------------------------
