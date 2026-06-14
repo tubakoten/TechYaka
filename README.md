@@ -12,7 +12,22 @@
 TechYaka, tüm ilanları yapay zeka ile otomatik toplayıp interaktif bir harita üzerinde sunar. "Bugün yakınımda ne var?" sorusuna tek ekranda cevap verir.
 
 ---
+## 📸 Ekran Görüntüleri
 
+### Ana Sayfa — Swipe Sistemi
+<img width="1462" height="806" alt="Ekran Resmi 2026-06-14 10 16 50" src="https://github.com/user-attachments/assets/909fd0b2-bce9-425e-a2c9-eb05fb9d3e5c" />
+
+
+### İnteraktif Harita
+<img width="1462" height="806" alt="Ekran Resmi 2026-06-14 10 17 12" src="https://github.com/user-attachments/assets/2b9933f4-0e52-421f-aa27-1488c2b7d102" />
+
+
+### Kategori Filtreleme
+<img width="1462" height="806" alt="Ekran Resmi 2026-06-14 10 16 42" src="https://github.com/user-attachments/assets/224e5a72-d6a4-4c7a-bf6a-c7c3a814e579" />
+
+
+
+---
 ## ✨ Özellikler
 
 | Özellik | Açıklama |
