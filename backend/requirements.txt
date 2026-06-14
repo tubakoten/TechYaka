@@ -12,3 +12,4 @@ pypdf
 python-multipart
 python-jose[cryptography]
 bcrypt
+groq

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import google.generativeai as genai
+from groq import Groq
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -28,6 +29,8 @@ if not api_key:
     print("🚨 UYARI: GEMINI_API_KEY bulunamadı!")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-2.5-flash')
+
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 SECRET_KEY = os.getenv("SECRET_KEY", "techyaka-super-secret-key-2026")
 ALGORITHM = "HS256"
@@ -92,13 +95,13 @@ def get_db():
         db.close()
 
 # ---------------------------------------------------------
-# 3. AUTH YARDIMCI FONKSİYONLARI
+# 3. AUTH
 # ---------------------------------------------------------
 def sifre_hashle(sifre: str) -> str:
-    return bcrypt.hashpw(sifre.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    return bcrypt.hashpw(sifre[:72].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def sifre_dogrula(sifre: str, hash: str) -> bool:
-    return bcrypt.checkpw(sifre.encode('utf-8'), hash.encode('utf-8'))
+    return bcrypt.checkpw(sifre[:72].encode('utf-8'), hash.encode('utf-8'))
 
 def token_olustur(data: dict) -> str:
     to_encode = data.copy()
@@ -106,10 +109,7 @@ def token_olustur(data: dict) -> str:
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def mevcut_kullanici(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
+def mevcut_kullanici(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
     if not credentials:
         return None
     try:
@@ -157,7 +157,6 @@ KOORDİNAT: Gerçek lokasyona göre İstanbul koordinatı ver.
 Format: [{{"title": "...", "location": "Semt, İstanbul", "coordinates": [LAT, LNG], "type": "{kaynak['type']}", "date": "GG Ay YYYY", "url": "ilanın direkt linki veya boş string"}}]
 Metin: {ham_metin[:5000]}
 """
-
             try:
                 response = model.generate_content(prompt)
                 ai_text = response.text.replace("```json", "").replace("```", "").strip()
@@ -186,8 +185,7 @@ Metin: {ham_metin[:5000]}
                         coordinates=etkinlik_data.get("coordinates", [41.0082, 28.9784]),
                         type=kaynak["type"],
                         date=etkinlik_data.get("date", "Belirtilmemiş"),
-                        is_active=True,
-                        trust_score=0,
+                        is_active=True, trust_score=0,
                         source_url=ilan_url
                     )
                     db.add(yeni)
@@ -212,7 +210,7 @@ async def lifespan(app: FastAPI):
     yield
     scheduler.shutdown()
 
-app = FastAPI(title="TechYaka API", version="7.0.0", lifespan=lifespan)
+app = FastAPI(title="TechYaka API", version="8.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ---------------------------------------------------------
@@ -265,11 +263,7 @@ def kayit_ol(request: KayitRequest, db: Session = Depends(get_db)):
     mevcut = db.query(KullaniciDB).filter(KullaniciDB.email == request.email).first()
     if mevcut:
         raise HTTPException(status_code=400, detail="Bu email zaten kayıtlı.")
-    yeni = KullaniciDB(
-        email=request.email,
-        ad_soyad=request.ad_soyad,
-        sifre_hash=sifre_hashle(request.sifre)
-    )
+    yeni = KullaniciDB(email=request.email, ad_soyad=request.ad_soyad, sifre_hash=sifre_hashle(request.sifre))
     db.add(yeni)
     db.commit()
     db.refresh(yeni)
@@ -324,8 +318,6 @@ def otomatik_etkinlik_ekle(request: URLRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(yeni)
         return {"status": "success", "data": yeni}
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Gemini JSON döndüremedi.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Hata: {str(e)}")
 
@@ -384,56 +376,34 @@ def ai_oneri(db: Session = Depends(get_db), kullanici=Depends(mevcut_kullanici))
         return swipe_edilmemis
 
 # ---------------------------------------------------------
-# 11. CHAT ENDPOİNT'İ
+# 11. CHAT ENDPOİNT'İ — GROQ
 # ---------------------------------------------------------
 @app.post("/api/chat")
 def kariyer_chat(request: ChatRequest, db: Session = Depends(get_db), kullanici=Depends(mevcut_kullanici)):
     ilanlar = db.query(EtkinlikDB).all()
-    ilan_listesi = [{"title": e.title, "type": e.type, "location": e.location, "date": e.date, "url": e.source_url} for e in ilanlar]
+    ilan_listesi = [{"title": e.title, "type": e.type, "location": e.location} for e in ilanlar]
 
-    # Kullanıcı profilini de ekle
     profil_metin = ""
     if kullanici:
         profil = db.query(KullaniciProfilDB).filter(KullaniciProfilDB.kullanici_id == kullanici.id).first()
         if profil:
-            profil_metin = f"""
-Kullanıcı Profili:
-- Ad: {kullanici.ad_soyad}
-- Bölüm: {profil.bolum or 'Belirtilmemiş'}
-- Sınıf: {profil.sinif or 'Belirtilmemiş'}
-- Beceriler: {profil.beceriler or 'Belirtilmemiş'}
-- İlgi Alanları: {profil.ilgi_alanlari or 'Belirtilmemiş'}
-"""
+            profil_metin = f"Kullanıcı: {kullanici.ad_soyad}, Bölüm: {profil.bolum}, Beceriler: {profil.beceriler}"
 
-    prompt = f"""
-Sen TechYaka'nın AI kariyer asistanısın. İstanbul'daki mühendislik öğrencilerine kariyer tavsiyeleri veriyorsun.
-
+    system_prompt = f"""Sen TechYaka'nın AI kariyer asistanısın. İstanbul'daki mühendislik öğrencilerine kariyer tavsiyeleri veriyorsun.
 {profil_metin}
-
-Platformdaki mevcut ilanlar:
-{ilan_listesi}
-
-GÖREVLERIN:
-1. Staj, hackathon, meetup ve kariyer hakkında sorulara cevap ver
-2. Kullanıcının profiline göre kişiselleştirilmiş tavsiye ver
-3. İlgili ilan varsa başlığını ve URL'sini paylaş
-4. CV yazımı, mülakat hazırlığı, LinkedIn optimizasyonu hakkında tavsiye ver
-5. Motivasyon ver, pozitif ve enerjik ol
-
-KURALLAR:
-- Her zaman Türkçe cevap ver
-- Max 4-5 cümle, kısa ve öz ol
-- Emoji kullan ama abartma (max 2-3)
-- Kullanıcının adını ara sıra kullan
-- Somut ve uygulanabilir tavsiyeler ver
-- Platforma özel: "TechYaka'da şu an X ilanı var, incelemelisin!" gibi yönlendirmeler yap
-
-Kullanıcının sorusu: {request.mesaj}
-"""
+Platformdaki ilanlar: {ilan_listesi}
+Samimi, motive edici, Türkçe, max 4-5 cümle, emoji kullan ama abartma."""
 
     try:
-        response = model.generate_content(prompt)
-        return {"cevap": response.text}
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": request.mesaj}
+            ],
+            max_tokens=500
+        )
+        return {"cevap": response.choices[0].message.content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat Hatası: {str(e)}")
 
@@ -466,6 +436,7 @@ def profil_getir(db: Session = Depends(get_db), kullanici=Depends(mevcut_kullani
     if not profil:
         return {}
     return profil
+
 @app.post("/api/cv-yukle")
 async def cv_yukle(file: UploadFile = File(...), db: Session = Depends(get_db), kullanici=Depends(mevcut_kullanici)):
     try:
@@ -485,19 +456,32 @@ async def cv_yukle(file: UploadFile = File(...), db: Session = Depends(get_db), 
             db.add(KullaniciProfilDB(cv_metin=cv_metin[:5000], kullanici_id=kullanici_id))
         db.commit()
 
-        puan = min(95, max(65, len(cv_metin) // 50))
+        # Groq ile CV değerlendirme
+        try:
+            cv_response = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": "Sen bir kariyer uzmanısın. CV'leri değerlendirip JSON formatında geri bildirim veriyorsun. SADECE JSON döndür, başka hiçbir şey yazma."},
+                    {"role": "user", "content": f"""Bu CV'yi değerlendir ve SADECE şu JSON formatında yanıt ver:
+{{"puan": 75, "ozet": "...", "guclu_yonler": ["...", "...", "..."], "gelistirilmesi_gerekenler": ["...", "..."], "oneriler": ["...", "...", "..."]}}
 
-        return {
-            "status": "success",
-            "karakter_sayisi": len(cv_metin),
-            "degerlendirme": {
+CV: {cv_metin[:3000]}"""}
+                ],
+                max_tokens=800
+            )
+            deg_text = cv_response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
+            degerlendirme = json.loads(deg_text)
+        except Exception:
+            puan = min(95, max(65, len(cv_metin) // 50))
+            degerlendirme = {
                 "puan": puan,
-                "ozet": "CV'niz başarıyla analiz edildi. Teknik becerileriniz ve proje deneyiminiz öne çıkıyor.",
+                "ozet": "CV'niz başarıyla analiz edildi.",
                 "guclu_yonler": ["Teknik beceriler güçlü", "Proje deneyimi mevcut", "Akademik geçmiş etkileyici"],
                 "gelistirilmesi_gerekenler": ["LinkedIn profili eklenebilir", "Açık kaynak katkıları artırılabilir"],
                 "oneriler": ["GitHub profilini güçlendir", "Kişisel projelere ağırlık ver", "Tech etkinliklerine katıl"]
             }
-        }
+
+        return {"status": "success", "karakter_sayisi": len(cv_metin), "degerlendirme": degerlendirme}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"CV Hatası: {str(e)}")
 
@@ -515,21 +499,24 @@ def uyumluluk_skoru(etkinlik_id: int, db: Session = Depends(get_db), kullanici=D
         raise HTTPException(status_code=404, detail="İlan bulunamadı.")
     if not profil or (not profil.bolum and not profil.cv_metin):
         return {"skor": None, "aciklama": "Profil bilgisi eksik"}
-    profil_metin = f"Bölüm: {profil.bolum}, Sınıf: {profil.sinif}, Beceriler: {profil.beceriler}, İlgi: {profil.ilgi_alanlari}, CV: {profil.cv_metin[:1000] if profil.cv_metin else 'Yok'}"
-    prompt = f"""
-    Öğrenci profili ile ilanı karşılaştır, uyumluluk skoru ver.
-    SADECE JSON. Format: {{"skor": 85, "aciklama": "..."}}
-    Skor 0-100. Açıklama max 2 cümle, Türkçe, motive edici.
-    Profil: {profil_metin}
-    İlan: {etkinlik.title} / {etkinlik.type} / {etkinlik.location}
-    """
+    profil_metin = f"Bölüm: {profil.bolum}, Sınıf: {profil.sinif}, Beceriler: {profil.beceriler}"
     try:
-        response = model.generate_content(prompt)
-        ai_text = response.text.replace("```json", "").replace("```", "").strip()
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "Öğrenci profili ile ilanı karşılaştır. SADECE JSON döndür: {\"skor\": 85, \"aciklama\": \"...\"}"},
+                {"role": "user", "content": f"Profil: {profil_metin}\nİlan: {etkinlik.title} / {etkinlik.type}"}
+            ],
+            max_tokens=200
+        )
+        ai_text = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
         return json.loads(ai_text)
     except Exception:
         return {"skor": None, "aciklama": "Skor hesaplanamadı"}
 
+# ---------------------------------------------------------
+# 14. PING
+# ---------------------------------------------------------
 @app.get("/ping")
 def ping():
     return {"status": "alive", "message": "TechYaka is running! 🚀"}
